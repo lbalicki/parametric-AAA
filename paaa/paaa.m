@@ -5,21 +5,22 @@ function [bf,info] = paaa(samples,sampling_values,tol,options)
 %   Computes a multivariate rational approximant represented in barycentric form.
 %
 %   Inputs:
-%       SAMPLES          - Multidimensional array containing the samples to be approximated.
-%       SAMPLING_VALUES  - Cell array of sampling points in each variable.
-%       TOL              - Convergence tolerance for the maximum error (default: 1e-3).
+%       SAMPLES          - Multidimensional array of size N_1 x ... x N_d containing the samples to be approximated.
+%       SAMPLING_VALUES  - Cell array of sampling points in each variable such that size(sampling_values{i},2) == N_i.
+%       TOL              - Convergence tolerance for the relative maximum error (default: 1e-3).
 %       OPTIONS          - Struct containing options:
-%                            * options.itpl_part                    - Cell array of initial interpolation partitions (default: empty).
-%                            * options.real_loewner                 - Whether or not to make Loewner matrix real-valued (default: false).
-%                            * options.max_itpl                     - Maximum number of interpolation points in each variable (default: size(samples) - 1).
-%                            * options.min_itpl                     - Minimum number of interpolation points in each variable (default: 0).
+%                            * options.nodes_part                   - Cell array of initial nodes (default: empty).
+%                            * options.real_loewner                 - Whether or not to make Loewner matrix real-valued, requires that sampling_values
+%                                                                     are complex conjugates in the first and real in other variables (default: false).
+%                            * options.max_nodes                    - Maximum number of nodes in each variable (default: size(samples) - 1).
+%                            * options.min_nodes                    - Minimum number of interpolation points in each variable (default: 0).
 %                            * options.max_iter                     - Maximum number of iterations for p-AAA (default: based on sampling_values).
 %                            * options.validation.samples           - Samples used to compute a validation error (default: N\A)
 %                            * options.validation.sampling_values   - Sampling values used to compute a validation error (default: N\A)
-%                            * options.more_info                    - Whether or not to include all barycentric forms and condition numbers in info (default: false).
+%                            * options.more_info                    - Whether or not to include all barycentric forms in info (default: false).
 %
 %   Outputs:
-%       BF               - Rational approximant in barycentric form.
+%       BF               - Rational approximant as a BarycentricForm instance.
 %       INFO             - Cell array with information about the approximation at each iteration.
 %
 
@@ -30,12 +31,12 @@ end
 num_vars = length(sampling_values);
 
 % set initial interpolation partition
-if ~isfield(options,'itpl_part')
-    itpl_part = cell(1,num_vars);
-    num_itpl = zeros(1,num_vars);
+if ~isfield(options,'nodes_part')
+    nodes_part = cell(1,num_vars);
+    num_nodes = zeros(1,num_vars);
 else
-    itpl_part = options.itpl_part;
-    num_itpl = cellfun(@length,itpl_part);
+    nodes_part = options.nodes_part;
+    num_nodes = cellfun(@length,nodes_part);
 end
 
 if ~isfield(options,'real_loewner')
@@ -43,19 +44,19 @@ if ~isfield(options,'real_loewner')
 end
 
 % set maximum number of interpolation points in each variable
-if ~isfield(options,'max_itpl')
-    options.max_itpl = size(samples) - 1;
+if ~isfield(options,'max_nodes')
+    options.max_nodes = size(samples) - 1;
     if num_vars == 1
-        options.max_itpl = options.max_itpl(1);
+        options.max_nodes = options.max_nodes(1);
     end
     if options.real_loewner
-        options.max_itpl(1) = options.max_itpl(1) - 1;
+        options.max_nodes(1) = options.max_nodes(1) - 1;
     end
 end
 
 % set minimum number of interpolation points in each variable
-if ~isfield(options,'min_itpl')
-    options.min_itpl = zeros(1,num_vars);
+if ~isfield(options,'min_nodes')
+    options.min_nodes = zeros(1,num_vars);
 end
 
 if ~isfield(options,'max_iter')
@@ -74,7 +75,6 @@ if options.real_loewner
 end
 
 info.bf_iterates = {};
-info.cond_numbers = [];
 info.rel_max_errors = [];
 info.rel_ls_errors = [];
 info.rel_linearized_ls_errors = [];
@@ -87,7 +87,7 @@ norm_2_samples = norm(samples(:))^2;
 err_mat = abs(samples-mean(samples,'all'));
 [max_err,max_idx] = max(err_mat,[],'all');
 rel_ls_err = norm(err_mat(:))^2 / norm_2_samples;
-fprintf('p-AAA initial rel max error %d, rel LS error %d \n',max_err/max_samples,rel_ls_err)
+fprintf('p-AAA Initial       | rel max err %.3e | rel LS err %.3e\n', max_err/max_samples, rel_ls_err);
 
 % do this such that p-AAA does at least one iteration
 max_err = Inf;
@@ -95,15 +95,15 @@ max_err = Inf;
 max_Idx = cell(1,num_vars);
 j = 0;
 
-while (max_err > max_samples * tol && j < options.max_iter) || any(num_itpl<options.min_itpl)
+while (max_err > max_samples * tol && j < options.max_iter) || any(num_nodes<options.min_nodes)
 
     j = j + 1;
 
     [max_Idx{:}] = ind2sub(size(samples),max_idx);
 
     % check if maximum order has been reached
-    add_itpl = num_itpl < options.max_itpl;
-    % add_itpl = cellfun(@(ip,mi)length(ip)<mi,itpl_part,num2cell(options.max_itpl));
+    add_itpl = num_nodes < options.max_nodes;
+    % add_itpl = cellfun(@(ip,mi)length(ip)<mi,nodes_part,num2cell(options.max_nodes));
     if ~any(add_itpl)
         fprintf('Reached maximum number of interpolation points \n')
         break
@@ -113,26 +113,26 @@ while (max_err > max_samples * tol && j < options.max_iter) || any(num_itpl<opti
     for i = 1:num_vars
         % make sure to keep at least one sample in LS partition
         if add_itpl(i)
-            itpl_part{i} = unique([itpl_part{i},max_Idx{i}]);
+            nodes_part{i} = unique([nodes_part{i},max_Idx{i}]);
             % also interpolate the complex conjugate if 'real_loewner=true'
             if i == 1 && options.real_loewner && imag(sampling_values{i}(max_Idx{i})) ~= 0
                 % find the complex conjugate
                 [~,min_idx] = min(abs(conj(sampling_values{1}(max_Idx{i})) - sampling_values{1}));
-                itpl_part{i} = unique([itpl_part{i},min_idx]);
+                nodes_part{i} = unique([nodes_part{i},min_idx]);
             end
         end
     end
 
     % update number of interpolation points
-    num_itpl = cellfun(@length,itpl_part);
+    num_nodes = cellfun(@length,nodes_part);
 
     % in order to compute a real loewner matrix we need orthogonal transformation matrices
     if options.real_loewner
-        real_transforms.UR = get_JH(sampling_values,itpl_part);
+        real_transforms.UR = get_JH(sampling_values,nodes_part);
     end
 
     % solve LS problem
-    L = loewner_mat(samples,sampling_values,itpl_part,real_transforms);
+    L = loewner_mat(samples,sampling_values,nodes_part,real_transforms);
     [~,~,X] = svd(L,0);
     denom_coefs = X(:,end);
     
@@ -143,19 +143,20 @@ while (max_err > max_samples * tol && j < options.max_iter) || any(num_itpl<opti
 
     if options.real_loewner
         % transform the real coefficients back to correct complex ones
-        denom_coefs = reshape(denom_coefs,flip(num_itpl));
+        denom_coefs = reshape(denom_coefs,flip(num_nodes));
         denom_coefs = tensorprod(real_transforms.UR,denom_coefs,2,num_vars);
         denom_coefs = permute(denom_coefs, [2:num_vars,1]);
         denom_coefs = denom_coefs(:);
     end
 
-    itpl_samples = samples(itpl_part{:});
+    itpl_samples = samples(nodes_part{:});
     if num_vars > 1
         itpl_samples = permute(itpl_samples,num_vars:-1:1);
     end
     itpl_samples = itpl_samples(:);
-    nodes = cellfun(@(sv, lp) sv(lp), sampling_values, itpl_part, 'UniformOutput', false);
+    nodes = cellfun(@(sv, lp) sv(lp), sampling_values, nodes_part, 'UniformOutput', false);
     num_coefs = denom_coefs .* itpl_samples(:);
+
     bf = BarycentricForm(nodes,num_coefs,denom_coefs);
 
     % greedy selection
@@ -164,10 +165,10 @@ while (max_err > max_samples * tol && j < options.max_iter) || any(num_itpl<opti
     % set errors to zero to avoid no interpolation points to be added
     zero_idx = cell(1,num_vars);
     for i = 1:num_vars
-        if length(itpl_part{i}) >= options.max_itpl(i)
+        if length(nodes_part{i}) >= options.max_nodes(i)
             zero_idx{i} = 1:size(samples,i);
         else
-            zero_idx{i} = itpl_part{i};
+            zero_idx{i} = nodes_part{i};
         end
     end
     err_mat_greedy = err_mat;
@@ -187,7 +188,6 @@ while (max_err > max_samples * tol && j < options.max_iter) || any(num_itpl<opti
     info.rel_linearized_ls_errors(end+1) = rel_lin_ls_err;
     if options.more_info
         info.bf_iterates{end+1} = bf;
-        info.cond_numbers(end+1) = cond(L);
     end
 
     if isfield(options,'validation')
@@ -196,9 +196,8 @@ while (max_err > max_samples * tol && j < options.max_iter) || any(num_itpl<opti
         info.rel_validation_ls_errors(end+1) = norm(validation_err_mat(:))^2 / norm(options.validation.samples(:))^2;
     end
 
-    fprintf('p-AAA Iteration %i rel max error %d, rel LS error %d, rel linearized LS error %d, interpolation points [',j,max_err/max_samples,rel_ls_err,rel_lin_ls_err)
-    fprintf('%g ', num_itpl);
-    fprintf(']\n');
+    fprintf('p-AAA Iteration %3d | rel max err %.3e | rel LS err %.3e | rel lin LS err %.3e | num nodes [%s]\n', ...
+    j, max_err/max_samples, rel_ls_err, rel_lin_ls_err, sprintf('%g ', num_nodes));
 
 end
 end

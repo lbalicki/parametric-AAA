@@ -1,4 +1,4 @@
-function [bf,info] = solve_als(samples,sampling_values,itpl_part,coef_rank,options)
+function [bf,info] = solve_als(samples,sampling_values,nodes_part,coef_rank,options)
 % SOLVE_ALS Solve low-rank p-AAA LS problem using ALS (Alternating Least Squares).
 %
 %   [BF, INFO] = SOLVE_ALS(SAMPLES, SAMPLING_VALUES, ITPL_PART, COEF_RANK, OPTIONS)
@@ -7,7 +7,7 @@ function [bf,info] = solve_als(samples,sampling_values,itpl_part,coef_rank,optio
 %   Inputs:
 %       SAMPLES          - Tensor toolbox tensor of samples to be approximated.
 %       SAMPLING_VALUES  - Cell array of sampling points in each variable.
-%       ITPL_PART        - Cell array of interpolation partitions in each variable.
+%       NODES_PART       - Cell array of node partitions in each variable.
 %       COEF_RANK        - Constraint for number of terms included in the CP decomposition used to represent the barycentric coefficients.
 %       OPTIONS          - Struct containing options:
 %                            * options.real_transforms - Struct with fields UL, UR for real transformations.
@@ -26,7 +26,7 @@ function [bf,info] = solve_als(samples,sampling_values,itpl_part,coef_rank,optio
 %                            * info.als_rel_max_errors              - Relative maximum error for all iterations.
 %
 
-orders = cellfun("length", itpl_part);
+orders = cellfun("length", nodes_part);
 num_vars = length(sampling_values);
 
 if ~isfield(options,'real_transforms')
@@ -58,13 +58,13 @@ end
 % initialize difference in objective functions between iterations
 diff = Inf;
 
-L1 = als_mat(samples, sampling_values, itpl_part, coefs, 1, options.real_transforms);
+L1 = als_mat(samples, sampling_values, nodes_part, coefs, 1, options.real_transforms);
 
 norm_2_samples = norm(samples(:))^2;
 prev_obj_fun = norm(L1*coefs{1}(:))^2 / norm_2_samples;
 obj_fun = prev_obj_fun;
 
-fprintf('    ALS initial OF value: %d\n',prev_obj_fun)
+fprintf('    ALS Initial      | obj fun   %.3e\n', prev_obj_fun);
 
 info.als_bf_iterates = {};
 info.als_rel_linearized_ls_errors = [];
@@ -76,12 +76,12 @@ if options.more_info
         coefs{1} = options.real_transforms.UR * coefs{1};
     end
     
-    itpl_samples = samples(itpl_part{:});
+    itpl_samples = samples(nodes_part{:});
     itpl_samples = tensor(itpl_samples,orders);
     
     denom_coefs = ktensor(coefs);
     num_coefs = itpl_samples .* full(denom_coefs);
-    itpl_nodes = cellfun(@(sv, lp) sv(lp), sampling_values, itpl_part, 'UniformOutput', false);
+    itpl_nodes = cellfun(@(sv, lp) sv(lp), sampling_values, nodes_part, 'UniformOutput', false);
     
     bf = LowRankBarycentricForm(itpl_nodes,num_coefs,denom_coefs);
     
@@ -101,7 +101,7 @@ while diff > options.change_tol && i <= options.max_iter && obj_fun > options.ab
     for j = 1:num_vars
 
         % get Loewner-type matrix for LS problem
-        L = als_mat(samples, sampling_values, itpl_part, coefs, j, options.real_transforms);
+        L = als_mat(samples, sampling_values, nodes_part, coefs, j, options.real_transforms);
 
         % construct second gsvd matrix for ||coef|| = 1 constraint
         ckr = ones(1,coef_rank);
@@ -114,10 +114,10 @@ while diff > options.change_tol && i <= options.max_iter && obj_fun > options.ab
         % rank-deficient constraint matrix B -> need to reduce coef_rank
         rank_ckr = rank(ckr);
         if rank_ckr < coef_rank
-            fprintf('        Reducing coef_rank from %i to %i due to rank-deficient gsvd matrix\n',coef_rank,rank_ckr)
+            fprintf('        Rank Change  | reducing coef_rank: %d → %d (GSVD rank-deficient)\n', coef_rank, rank_ckr);
             coef_rank = rank_ckr;
             coefs = cellfun(@(c)c(:,1:coef_rank),coefs,'UniformOutput',false);
-            L = als_mat(samples, sampling_values, itpl_part, coefs, j, options.real_transforms);
+            L = als_mat(samples, sampling_values, nodes_part, coefs, j, options.real_transforms);
             ckr = ckr(:,1:coef_rank);
         end
 
@@ -149,13 +149,13 @@ while diff > options.change_tol && i <= options.max_iter && obj_fun > options.ab
     % return norm scalings my to the coefficient tensor
     coefs{1} = mu .* coefs{1};
 
-    L1 = als_mat(samples, sampling_values, itpl_part, coefs, 1, options.real_transforms);
+    L1 = als_mat(samples, sampling_values, nodes_part, coefs, 1, options.real_transforms);
 
     obj_fun = norm(L1 * coefs{1}(:))^2 / norm_2_samples;
 
     diff = abs((obj_fun - prev_obj_fun) / obj_fun);
 
-    fprintf('        ALS iteration %i, OF value %.3d, OF change %.3d \n',i,obj_fun,diff)
+    fprintf('        ALS Iter %3d | obj fun   %.3e | change %.3e\n', i, obj_fun, diff);
 
     if options.more_info
         real_coefs = coefs;
@@ -163,12 +163,12 @@ while diff > options.change_tol && i <= options.max_iter && obj_fun > options.ab
             real_coefs{1} = options.real_transforms.UR * real_coefs{1};
         end
         
-        itpl_samples = samples(itpl_part{:});
+        itpl_samples = samples(nodes_part{:});
         itpl_samples = tensor(itpl_samples,orders);
         
         denom_coefs = ktensor(real_coefs);
         num_coefs = itpl_samples .* full(denom_coefs);
-        itpl_nodes = cellfun(@(sv, lp) sv(lp), sampling_values, itpl_part, 'UniformOutput', false);
+        itpl_nodes = cellfun(@(sv, lp) sv(lp), sampling_values, nodes_part, 'UniformOutput', false);
         
         bf = LowRankBarycentricForm(itpl_nodes,num_coefs,denom_coefs);
         info.als_bf_iterates{end+1} = bf;
@@ -191,12 +191,12 @@ if isfield(options.real_transforms,'UL') && isfield(options.real_transforms,'UR'
     coefs{1} = options.real_transforms.UR * coefs{1};
 end
 
-itpl_samples = samples(itpl_part{:});
+itpl_samples = samples(nodes_part{:});
 itpl_samples = tensor(itpl_samples,orders);
 
 denom_coefs = ktensor(coefs);
 num_coefs = itpl_samples .* full(denom_coefs);
-itpl_nodes = cellfun(@(sv, lp) sv(lp), sampling_values, itpl_part, 'UniformOutput', false);
+itpl_nodes = cellfun(@(sv, lp) sv(lp), sampling_values, nodes_part, 'UniformOutput', false);
 
 bf = LowRankBarycentricForm(itpl_nodes,num_coefs,denom_coefs);
 

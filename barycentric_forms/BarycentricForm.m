@@ -2,7 +2,7 @@ classdef BarycentricForm
     %BARYCENTRICFORM Proper multivariate rational function in barycentric form.
 
     properties
-        itpl_nodes % cell array of interpolation nodes
+        nodes % cell array of barycentric nodes
         num_coefs % numerator coefficient tensor
         denom_coefs % denominator coefficient tensor
         num_vars % number of variables
@@ -11,18 +11,18 @@ classdef BarycentricForm
     end
     
     methods
-        function obj = BarycentricForm(itpl_nodes,num_coefs,denom_coefs,rem_sing_tol)
+        function obj = BarycentricForm(nodes,num_coefs,denom_coefs,rem_sing_tol)
             %BARYCENTRICFORM Construct a BarycentricForm instance.
             %
             %   Inputs:
-            %       ITPL_NODES    - Cell array of interpolation nodes such that itpl_nodes{i} are the interpolation nodes for the i-th variable.
+            %       NODES         - Cell array of barycentric nodes such that nodes{i} are the nodes for the i-th variable.
             %       NUM_COEFS     - Tensor/matrix/vector representing the barycentric coefficients of the numerator.
             %       DENOM_COEFS   - Tensor/matrix/vector representing the barycentric coefficients of the denominator.
             %       REM_SING_TOL  - Tolerance for removable singularities.
 
-            obj.itpl_nodes = itpl_nodes;
-            obj.num_vars = length(itpl_nodes);
-            obj.orders = cellfun(@length,itpl_nodes)-1;
+            obj.nodes = nodes;
+            obj.num_vars = length(nodes);
+            obj.orders = cellfun(@length,nodes)-1;
             obj.denom_coefs = obj.init_coefs_tensor(denom_coefs);
             obj.num_coefs = obj.init_coefs_tensor(num_coefs);
             if nargin > 3
@@ -33,7 +33,7 @@ classdef BarycentricForm
         function CT_init = init_coefs_tensor(obj,CT)
             %INIT_COEFS_TENSOR Initialize coefficient tensor based on the passed input type.
 
-            if all(arrayfun(@(i)(size(CT,i) == obj.orders(i)+1), 1:obj.num_vars))
+            if all(arrayfun(@(i)(size(CT,i) == (obj.orders(i)+1)), 1:obj.num_vars))
                 CT_init = CT;
             elseif size(CT,1) == prod(obj.orders+1)
                 CT_init = reshape(CT,flip(obj.orders)+1); % case where vectorized coefficients are passed
@@ -44,6 +44,7 @@ classdef BarycentricForm
         end
 
         function ps = poles(obj,other_args,var_idx)
+            %POLES Compute the poles with respect to one variable by specifying values for all other arguments.
 
             % if no variable index provided, assume we want poles with respect to the first variable
             if nargin < 3
@@ -56,7 +57,7 @@ classdef BarycentricForm
                     error('Need to provide arguments for all but one variable for pole computation.')
                 end
 
-                [A,E] = bf_compan(obj.denom_coefs, obj.itpl_nodes{1});
+                [A,E] = bf_compan(obj.denom_coefs, obj.nodes{1});
                 ps = eig(A,E);
                 ps(isinf(ps)) = [];
                 return
@@ -71,13 +72,13 @@ classdef BarycentricForm
                     continue;
                 end
 
-                C = cauchy_mat(obj.itpl_nodes{j}.',other_args{j-args_offset}.').';
+                C = cauchy_mat(obj.nodes{j}.',other_args{j-args_offset}.').';
                 ap = tensorprod(C,ap,2,j);
             end
             if obj.num_vars > 1
                 ap = permute(ap, obj.num_vars:-1:1);
             end
-            sigma = obj.itpl_nodes{var_idx};
+            sigma = obj.nodes{var_idx};
 
             n = obj.orders(var_idx) + 1;
 
@@ -103,6 +104,56 @@ classdef BarycentricForm
             end
         end
 
+        function N = eval_num(obj,args)
+            %EVAL_NUM Evaluate the numerator of the baryenctric form.
+            if size(args,2) ~= obj.num_vars
+                error('Argument has wrong number of variables.')
+            end
+
+            N = obj.num_coefs;
+            if iscell(args)
+                for i = 1:obj.num_vars
+                    C = cauchy_mat(args{i},obj.nodes{i},obj.rem_sing_tol);
+                    N = tensorprod(C.',N,2,i);
+                end
+                if obj.num_vars > 1
+                    N = permute(N, obj.num_vars:-1:1);
+                end
+            else
+                kr_C = cauchy_mat(args(:,1).',obj.nodes{1},obj.rem_sing_tol);
+                for i = 2:obj.num_vars
+                    C = cauchy_mat(args(:,i).',obj.nodes{i},obj.rem_sing_tol);
+                    kr_C = khatri_rao_prod(C,kr_C);
+                end
+                N = kr_C.' * N(:);
+            end
+        end
+
+        function D = eval_denom(obj,args)
+            %EVAL_DENOM Evaluate the denominator of the baryenctric form.
+            if size(args,2) ~= obj.num_vars
+                error('Argument has wrong number of variables.')
+            end
+
+            D = obj.denom_coefs;
+            if iscell(args)
+                for i = 1:obj.num_vars
+                    C = cauchy_mat(args{i},obj.nodes{i},obj.rem_sing_tol);
+                    D = tensorprod(C.',D,2,i);
+                end
+                if obj.num_vars > 1
+                    D = permute(D, obj.num_vars:-1:1);
+                end
+            else
+                kr_C = cauchy_mat(args(:,1).',obj.nodes{1},obj.rem_sing_tol);
+                for i = 2:obj.num_vars
+                    C = cauchy_mat(args(:,i).',obj.nodes{i},obj.rem_sing_tol);
+                    kr_C = khatri_rao_prod(C,kr_C);
+                end
+                D = kr_C.' * D(:);
+            end
+        end
+
         function H = eval(obj,args)
             %EVAL Evaluate baryenctric form.
             if size(args,2) ~= obj.num_vars
@@ -113,7 +164,7 @@ classdef BarycentricForm
             D = obj.denom_coefs;
             if iscell(args)
                 for i = 1:obj.num_vars
-                    C = cauchy_mat(args{i},obj.itpl_nodes{i},obj.rem_sing_tol);
+                    C = cauchy_mat(args{i},obj.nodes{i},obj.rem_sing_tol);
                     N = tensorprod(C.',N,2,i);
                     D = tensorprod(C.',D,2,i);
                 end
@@ -122,9 +173,9 @@ classdef BarycentricForm
                     H = permute(H, obj.num_vars:-1:1);
                 end
             else
-                kr_C = cauchy_mat(args(:,1).',obj.itpl_nodes{1},obj.rem_sing_tol);
+                kr_C = cauchy_mat(args(:,1).',obj.nodes{1},obj.rem_sing_tol);
                 for i = 2:obj.num_vars
-                    C = cauchy_mat(args(:,i).',obj.itpl_nodes{i},obj.rem_sing_tol);
+                    C = cauchy_mat(args(:,i).',obj.nodes{i},obj.rem_sing_tol);
                     kr_C = khatri_rao_prod(C,kr_C);
                 end
                 H = (kr_C.' * N(:)) ./ (kr_C.' * D(:));

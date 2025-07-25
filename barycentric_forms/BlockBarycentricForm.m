@@ -2,7 +2,7 @@ classdef BlockBarycentricForm
     %BARYCENTRICFORM Matrix-valued proper multivariate rational function in barycentric form.
 
     properties
-        itpl_nodes % cell array of interpolation nodes
+        nodes % cell array of barycentric nodes
         num_coefs % numerator coefficient tensor
         denom_coefs % denominator coefficient tensor
         num_vars % number of variables
@@ -12,19 +12,19 @@ classdef BlockBarycentricForm
     end
     
     methods
-        function obj = BlockBarycentricForm(itpl_nodes,num_coefs,denom_coefs,rem_sing_tol)
+        function obj = BlockBarycentricForm(nodes,num_coefs,denom_coefs,rem_sing_tol)
             %BLOCKBARYCENTRICFORM Construct a BlockBarycentricForm instance.
             %
             %   Inputs:
-            %       ITPL_NODES    - Cell array of interpolation nodes such that itpl_nodes{i} are the interpolation nodes for the i-th variable.
+            %       NODES         - Cell array of barycentric nodes such that nodes{i} are the nodes for the i-th variable.
             %       NUM_COEFS     - Tensor/matrix/vector representing the barycentric coefficients of the numerator.
             %       DENOM_COEFS   - Tensor/matrix/vector representing the barycentric coefficients of the denominator.
             %       REM_SING_TOL  - Tolerance for removable singularities.
             %
 
-            obj.itpl_nodes = itpl_nodes;
-            obj.num_vars = length(itpl_nodes);
-            obj.orders = cellfun(@length,itpl_nodes)-1;
+            obj.nodes = nodes;
+            obj.num_vars = length(nodes);
+            obj.orders = cellfun(@length,nodes)-1;
             obj.denom_coefs = obj.init_denom_coefs_tensor(denom_coefs);
             obj.num_coefs = obj.init_num_coefs_tensor(num_coefs);
             obj.dim_vals = size(obj.num_coefs,[obj.num_vars+1,obj.num_vars+2]);
@@ -56,6 +56,7 @@ classdef BlockBarycentricForm
         end
 
         function ps = poles(obj,other_args,var_idx)
+            %POLES Compute the poles with respect to one variable by specifying values for all other arguments.
 
             % if no variable index provided, assume we want poles with respect to the first variable
             if nargin < 3
@@ -68,7 +69,7 @@ classdef BlockBarycentricForm
                     error('Need to provide arguments for all but one variable for pole computation.')
                 end
 
-                [A,E] = bf_compan(obj.denom_coefs, obj.itpl_nodes{1});
+                [A,E] = bf_compan(obj.denom_coefs, obj.nodes{1});
                 ps = eig(A,E);
                 ps(isinf(ps)) = [];
                 return
@@ -83,13 +84,13 @@ classdef BlockBarycentricForm
                     continue;
                 end
 
-                C = cauchy_mat(obj.itpl_nodes{j}.',other_args{j-args_offset}.').';
+                C = cauchy_mat(obj.nodes{j}.',other_args{j-args_offset}.').';
                 ap = tensorprod(C,ap,2,j);
             end
             if obj.num_vars > 1
                 ap = permute(ap, obj.num_vars:-1:1);
             end
-            sigma = obj.itpl_nodes{var_idx};
+            sigma = obj.nodes{var_idx};
 
             n = obj.orders(var_idx) + 1;
 
@@ -125,7 +126,7 @@ classdef BlockBarycentricForm
             D = obj.denom_coefs;
             if iscell(args)
                 for i = 1:obj.num_vars
-                    C = cauchy_mat(args{i},obj.itpl_nodes{i},obj.rem_sing_tol);
+                    C = cauchy_mat(args{i},obj.nodes{i},obj.rem_sing_tol);
                     N = tensorprod(C.',N,2,i);
                     D = tensorprod(C.',D,2,i);
                 end
@@ -134,9 +135,9 @@ classdef BlockBarycentricForm
                     H = permute(H, [obj.num_vars:-1:1,obj.num_vars+1,obj.num_vars+2]);
                 end
             else
-                kr_C = cauchy_mat(args(:,1).',obj.itpl_nodes{1},obj.rem_sing_tol);
+                kr_C = cauchy_mat(args(:,1).',obj.nodes{1},obj.rem_sing_tol);
                 for i = 2:obj.num_vars
-                    C = cauchy_mat(args(:,i).',obj.itpl_nodes{i},obj.rem_sing_tol);
+                    C = cauchy_mat(args(:,i).',obj.nodes{i},obj.rem_sing_tol);
                     kr_C = khatri_rao_prod(C,kr_C);
                 end
                 N = reshape(N,[],obj.dim_vals(1),obj.dim_vals(2));

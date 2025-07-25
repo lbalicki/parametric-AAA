@@ -1,8 +1,8 @@
 classdef LowRankBarycentricForm
-    %BARYCENTRICFORM Proper multivariate rational function in barycentric form.
+    %BARYCENTRICFORM Proper multivariate rational function in barycentric form with low-rank coefficients allowed.
 
     properties
-        itpl_nodes % cell array of interpolation nodes
+        nodes % cell array of barycentric nodes
         num_coefs % numerator coefficient tensor
         denom_coefs % denominator coefficient tensor
         num_vars % number of variables
@@ -11,18 +11,18 @@ classdef LowRankBarycentricForm
     end
     
     methods
-        function obj = LowRankBarycentricForm(itpl_nodes,num_coefs,denom_coefs,rem_sing_tol)
+        function obj = LowRankBarycentricForm(nodes,num_coefs,denom_coefs,rem_sing_tol)
             %BARYCENTRICFORM Construct a BarycentricForm instance.
             %
             %   Inputs:
-            %       ITPL_NODES    - Cell array of interpolation nodes such that itpl_nodes{i} are the interpolation nodes for the i-th variable.
+            %       NODES         - Cell array of barycentric nodes such that nodes{i} are the nodes for the i-th variable.
             %       NUM_COEFS     - Tensor toolbox tensor representing the barycentric coefficients of the numerator.
             %       DENOM_COEFS   - Tensor toolbox tensor representing the barycentric coefficients of the denominator.
             %       REM_SING_TOL  - Tolerance for removable singularities.
 
-            obj.itpl_nodes = itpl_nodes;
-            obj.num_vars = length(itpl_nodes);
-            obj.orders = cellfun(@length,itpl_nodes)-1;
+            obj.nodes = nodes;
+            obj.num_vars = length(nodes);
+            obj.orders = cellfun(@length,nodes)-1;
             obj.denom_coefs = obj.init_coefs_tensor(denom_coefs);
             obj.num_coefs = obj.init_coefs_tensor(num_coefs);
             if nargin > 3
@@ -45,6 +45,7 @@ classdef LowRankBarycentricForm
         end
 
         function ps = poles(obj,other_args,var_idx)
+            %POLES Compute the poles with respect to one variable by specifying values for all other arguments.
 
             if nargin < 3
                 var_idx = 1;
@@ -56,7 +57,7 @@ classdef LowRankBarycentricForm
                     error('Need to provide arguments for all but one variable for pole computation.')
                 end
 
-                [A,E] = bf_compan(obj.denom_coefs, obj.itpl_nodes{1});
+                [A,E] = bf_compan(obj.denom_coefs, obj.nodes{1});
                 ps = eig(A,E);
                 ps(isinf(ps)) = [];
                 return
@@ -70,14 +71,14 @@ classdef LowRankBarycentricForm
                     continue;
                 end
 
-                C = cauchy_mat(obj.itpl_nodes{j}.',other_args{j-args_offset}.').';
+                C = cauchy_mat(obj.nodes{j}.',other_args{j-args_offset}.').';
                 ap = ttm(ap,C,j);
             end
 
             ap = double(ap);
             
             n = size(ap,1);
-            sigma = obj.itpl_nodes{var_idx};
+            sigma = obj.nodes{var_idx};
 
             E = zeros(n);
             E(1:end-1,1) = ones(n-1,1);
@@ -112,15 +113,15 @@ classdef LowRankBarycentricForm
             D = obj.denom_coefs;
             if iscell(args)
                 for i = 1:obj.num_vars
-                    C = cauchy_mat(args{i},obj.itpl_nodes{i},obj.rem_sing_tol);
+                    C = cauchy_mat(args{i},obj.nodes{i},obj.rem_sing_tol);
                     N = ttm(N,C.',i);
                     D = ttm(D,C.',i);
                 end
                 H = double(N ./ D);
             else
-                kr_C = cauchy_mat(args(:,1).',obj.itpl_nodes{1},obj.rem_sing_tol);
+                kr_C = cauchy_mat(args(:,1).',obj.nodes{1},obj.rem_sing_tol);
                 for i = 2:obj.num_vars
-                    C = cauchy_mat(args(:,i).',obj.itpl_nodes{i},obj.rem_sing_tol);
+                    C = cauchy_mat(args(:,i).',obj.nodes{i},obj.rem_sing_tol);
                     kr_C = khatrirao(C,kr_C);
                 end
                 N = double(N);

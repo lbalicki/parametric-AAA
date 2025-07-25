@@ -18,7 +18,7 @@ bf.eval([0,0;1,1;2,2])
 % Evaluate rational approximation on a grid
 bf.eval({[1,2,3],[4,5,6]})
 
-% Compute the poles with respect to the first variable x, and the fixed value y=3
+% Compute the poles with respect to the first variable x, and the fixed value y=1
 bf.poles({1},1)
 
 % Compute the poles with respect to the second variable y, and the fixed value x=5

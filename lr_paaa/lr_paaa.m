@@ -5,13 +5,13 @@ function [bf,info] = lr_paaa(samples,sampling_values,tol,coef_rank,options)
 %   Computes a multivariate rational approximant in terms of a barycentric form with low-rank tensor for barycentric coefficients.
 %
 %   Inputs:
-%       SAMPLES             - Tensor toolbox tensor of samples to be approximated.
-%       SAMPLING_VALUES     - Cell array of sampling points in each variable.
+%       SAMPLES             - Multidimensional array of size N_1 x ... x N_d containing the samples to be approximated.
+%       SAMPLING_VALUES     - Cell array of sampling points in each variable such that size(sampling_values{i},2) == N_i.
 %       TOL                 - Convergence tolerance in terms of relative maximum error.
 %       COEF_RANK           - Constraint for number of terms included in the CP decomposition used to represent the barycentric coefficients.
 %       OPTIONS (Optional)  - Struct containing options:
-%                            * options.itpl_part                    - Cell array of initial interpolation partition.
-%                            * options.max_itpl                     - Maximum number of interpolation points.
+%                            * options.nodes_part                   - Cell array of initial nodes (default: empty).
+%                            * options.max_nodes                    - Maximum number of nodes in each variable (default: size(samples) - 1).
 %                            * options.real_loewner                 - Wether to make the Loewner matrix real-valued. This is only supported if the first variable 
 %                                                                     is sampled in complex conjugate pairs and all other variables are real-valued (default: false).
 %                            * options.max_iter                     - Maximum number of iterations.
@@ -19,10 +19,10 @@ function [bf,info] = lr_paaa(samples,sampling_values,tol,coef_rank,options)
 %                            * options.more_info                    - Wether or not to compute more information about the iterates (default: false).
 %                            * options.validation.samples           - Samples used to compute a validation error (default: N\A)
 %                            * options.validation.sampling_values   - Sampling values used to compute a validation error (default: N\A)
-%                            * options.als_options                  - Struct with additional options for ALS.
+%                            * options.als_options                  - Struct with additional options for solve_als.
 %
 %   Outputs:
-%       BF              - Rational approximant in barycentric form.
+%       BF              - Rational approximant as a BarycentricForm instance.
 %       INFO            - Cell array with information about the approximation at each iteration.
 %
 
@@ -37,10 +37,10 @@ end
 
 num_vars = length(sampling_values);
 
-if ~isfield(options,'itpl_part')
-    itpl_part = cell(1,num_vars);
+if ~isfield(options,'nodes_part')
+    nodes_part = cell(1,num_vars);
 else
-    itpl_part = options.itpl_part;
+    nodes_part = options.nodes_part;
 end
 
 if ~isfield(options,'als_options')
@@ -55,10 +55,10 @@ if ~isfield(options,'reuse_coefs_ALS')
     options.reuse_coefs_ALS = true;
 end
 
-if ~isfield(options,'max_itpl')
-    options.max_itpl = size(samples) - 1;
+if ~isfield(options,'max_nodes')
+    options.max_nodes = size(samples) - 1;
     if options.real_loewner
-        options.max_itpl(1) = options.max_itpl(1) - 1;
+        options.max_nodes(1) = options.max_nodes(1) - 1;
     end
 end
 
@@ -93,7 +93,7 @@ norm_2_samples = norm(samples(:))^2;
 err_mat = abs(samples-mean(samples,'all'));
 [max_err,max_idx] = max(err_mat,[],'all');
 rel_ls_err = norm(err_mat(:))^2 / norm_2_samples;
-fprintf('LR p-AAA initial rel max error %d, rel LS error %d \n',max_err/max_samples,rel_ls_err)
+fprintf('LR p-AAA Initial     | rel max err %.3e | rel LS err %.3e\n', max_err/max_samples, rel_ls_err);
 
 % do this such that p-AAA does at least one iteration
 max_err = Inf;
@@ -113,7 +113,7 @@ while max_err/max_samples > tol && j < options.max_iter
     [max_Idx{:}] = ind2sub(size(samples),max_idx);
 
     % check if maximum order has been reached
-    add_itpl = cellfun(@(ip,mi)length(ip)<mi,itpl_part,num2cell(options.max_itpl));
+    add_itpl = cellfun(@(ip,mi)length(ip)<mi,nodes_part,num2cell(options.max_nodes));
     if ~any(add_itpl)
         fprintf('Reached maximum number of interpolation points \n')
         break
@@ -123,36 +123,36 @@ while max_err/max_samples > tol && j < options.max_iter
     for i = 1:num_vars
         % make sure to keep at least one sample in LS partition
         if add_itpl(i)
-            itpl_part{i} = unique([itpl_part{i},max_Idx{i}],'stable');
+            nodes_part{i} = unique([nodes_part{i},max_Idx{i}],'stable');
             % also interpolate the complex conjugate in the first variable if 'real_loewner=true'
             if i == 1 && options.real_loewner && imag(sampling_values{i}(max_Idx{i})) ~= 0
                 % find the complex conjugate
                 [~,min_idx] = min(abs(conj(sampling_values{1}(max_Idx{i})) - sampling_values{1}));
-                itpl_part{i} = unique([itpl_part{i},min_idx],'stable');
+                nodes_part{i} = unique([nodes_part{i},min_idx],'stable');
             end
         end
     end
 
     % in order to compute a real loewner matrix we need orthogonal transformation matrices
     if options.real_loewner
-        options.als_options.real_transforms.UR = get_JH(sampling_values,itpl_part);
+        options.als_options.real_transforms.UR = get_JH(sampling_values,nodes_part);
     end
 
     % if we reuse barycentric coefficients as the ALS initialization we must extract them from the previous barycentric form
     if options.reuse_coefs_ALS
         if j == 1
-            coefs_init = cellfun(@(ip) randn(length(ip), coef_rank), itpl_part, 'UniformOutput', false);
+            coefs_init = cellfun(@(ip) randn(length(ip), coef_rank), nodes_part, 'UniformOutput', false);
         else
             prev_coef_rank = length(bf.denom_coefs.lambda);
             prev_coefs = bf.denom_coefs.U;
             coefs_init = cell(1,num_vars);
             for i = 1:num_vars
-                coefs_init{i} = zeros(length(itpl_part{i}), coef_rank);
+                coefs_init{i} = zeros(length(nodes_part{i}), coef_rank);
                 coefs_init{i}(1:size(prev_coefs{i},1),1:size(prev_coefs{i},2)) = prev_coefs{i};
                 % if the previous coefficients were rank-deficient need to fill
                 % up with random values
                 if prev_coef_rank < coef_rank
-                    coefs_init{i}(:,prev_coef_rank+1:end) = rand(length(itpl_part{i}), coef_rank - prev_coef_rank);
+                    coefs_init{i}(:,prev_coef_rank+1:end) = rand(length(nodes_part{i}), coef_rank - prev_coef_rank);
                 end
             end
         end
@@ -160,7 +160,7 @@ while max_err/max_samples > tol && j < options.max_iter
     end
 
     % solve LS problem via ALS  
-    [bf,new_als_info] = solve_als(samples,sampling_values,itpl_part,coef_rank,options.als_options);
+    [bf,new_als_info] = solve_als(samples,sampling_values,nodes_part,coef_rank,options.als_options);
 
     info.rel_linearized_ls_errors(end+1) = new_als_info.als_rel_linearized_ls_errors(end);
 
@@ -173,10 +173,10 @@ while max_err/max_samples > tol && j < options.max_iter
     % set certain errors to zero to avoid no interpolation points to be added
     zero_idx = cell(1,num_vars);
     for i = 1:num_vars
-        if length(itpl_part{i}) >= options.max_itpl(i)
+        if length(nodes_part{i}) >= options.max_nodes(i)
             zero_idx{i} = 1:size(samples,i);
         else
-            zero_idx{i} = itpl_part{i};
+            zero_idx{i} = nodes_part{i};
         end
     end
     err_mat_greedy = err_mat;
@@ -206,9 +206,8 @@ while max_err/max_samples > tol && j < options.max_iter
         info.rel_validation_ls_errors(end+1) = norm(validation_err_mat(:))^2 / norm(options.validation.samples(:))^2;
     end
 
-    fprintf('LR p-AAA Iteration %i rel max error %d, rel LS error %d, interpolation points [',j,max_err/max_samples,rel_ls_err)
-    fprintf('%g ', cellfun(@length,itpl_part));
-    fprintf(']\n');
+    fprintf('LR p-AAA Iter    %3d | rel max err %.3e | rel LS err %.3e | num nodes [%s]\n', ...
+    j, max_err/max_samples, rel_ls_err, sprintf('%g ', cellfun(@length, nodes_part)));
 
 end
 
