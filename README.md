@@ -33,6 +33,22 @@ Algorithms:
 - `sv_paaa` Set-valued p-AAA for vector/matrix valued functions.
 - `lr_paaa` Low-rank p-AAA that represents barycentric coefficients in terms of low-rank tensors. 
 
+## Reference
+
+For the original algorithm:
+
+> A. Carracedo Rodriguez, L. Balicki, and S. Gugercin,  
+> *The p-AAA Algorithm for Data-Driven Modeling of Parametric Dynamical Systems*,  
+> SIAM J. Sci. Comput., vol. 45, no. 3, pp. A1332–A1358, 2023.  
+> [https://doi.org/10.1137/20M1322698](https://doi.org/10.1137/20M1322698)
+
+For the low-rank version:
+
+> L. Balicki and S. Gugercin,  
+> *Multivariate Rational Approximation via Low-Rank Tensors and the p-AAA Algorithm*,  
+> arXiv:2502.03204 [math.NA], 2025.  
+> [https://arxiv.org/abs/2502.03204](https://arxiv.org/abs/2502.03204)
+
 ## License
 
 The code is available under the MIT license (see `LICENSE.md` for details).
