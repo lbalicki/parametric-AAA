@@ -47,9 +47,10 @@ for i = 2:num_vars
 end
 
 nnz_idc = ~z_idc;
-L = samples(nnz_idc) .* kron_C(nnz_idc,:) - (H_itpl(:) .* kron_C(nnz_idc,:).').';
 
+% perform transformation to real loewner matrix
 if isfield(real_transforms,'UL') && isfield(real_transforms,'UR')
+    L = samples .* kron_C - (H_itpl(:) .* kron_C.').';
     L = reshape(L,[size(samples),size(H_itpl)]);
     L = tensorprod(real_transforms.UL,L,2,num_vars);
     L = permute(L, [2:num_vars,1,num_vars+1:2*num_vars]);
@@ -57,6 +58,9 @@ if isfield(real_transforms,'UL') && isfield(real_transforms,'UR')
     L = permute(L, [2:2*num_vars,1]);
     L = reshape(L,numel(samples),numel(H_itpl));
     L = real(L);
+    L(z_idc,:) = [];
+else
+    L = samples(nnz_idc) .* kron_C(nnz_idc,:) - (H_itpl(:) .* kron_C(nnz_idc,:).').';
 end
 
 end

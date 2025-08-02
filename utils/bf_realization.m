@@ -32,4 +32,3 @@ B(end) = -1;
 C = conj(beta);
 
 end
-
