@@ -14,7 +14,8 @@ first_real_idx = find(abs(imag(sampling_values{1})) < 100*eps(1), 1);
 if isempty(first_real_idx)
     first_real_idx = length(sampling_values{1})+1;
 end
-JJ = kron(eye((first_real_idx-1)/2),J);
+JC = repmat({J},1,(first_real_idx-1)/2);
+JJ = blkdiag(JC{:});
 JD = blkdiag(JJ,eye(length(sampling_values{1})-first_real_idx+1));
 end
 
