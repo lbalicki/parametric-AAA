@@ -43,67 +43,6 @@ classdef BarycentricForm
             end
         end
 
-        function ps = poles(obj,other_args,var_idx)
-            %POLES Compute the poles with respect to one variable by specifying values for all other arguments.
-
-            % if no variable index provided, assume we want poles with respect to the first variable
-            if nargin < 3
-                var_idx = 1;
-            end
-
-            % cover special case of single-variable function
-            if nargin < 2 || obj.num_vars == 1
-                if obj.num_vars > 1
-                    error('Need to provide arguments for all but one variable for pole computation.')
-                end
-
-                [A,E] = bf_compan(obj.denom_coefs, obj.nodes{1});
-                ps = eig(A,E);
-                ps(isinf(ps)) = [];
-                return
-            end
-
-            % assemble the barycentric coefficient evaluated at the fixed variables
-            ap = obj.denom_coefs;
-            args_offset = 0;
-            for j = 1:obj.num_vars
-                if j == var_idx
-                    args_offset = 1;
-                    continue;
-                end
-
-                C = cauchy_mat(obj.nodes{j}.',other_args{j-args_offset}.').';
-                ap = tensorprod(C,ap,2,j);
-            end
-            if obj.num_vars > 1
-                ap = permute(ap, obj.num_vars:-1:1);
-            end
-            sigma = obj.nodes{var_idx};
-
-            n = obj.orders(var_idx) + 1;
-
-            E = zeros(n);
-            E(1:end-1,1) = ones(n-1,1);
-            E(1:end-1,2:end) = -eye(n-1);
-
-            A = zeros(n);
-            A(1:end-1,1) = sigma(1);
-            A(1:end-1,2:end) = -diag(sigma(2:end));
-
-            size_ap = size(ap);
-            size_ps = size_ap;
-            size_ps(1) = size_ps(1) - 1;
-            ps = zeros(size_ps);
-
-            % compute eigenvalues for each input
-            for j = 1:prod(size_ap(2:end))
-                A(end,:) = ap(:,j);
-                p = eig(A,E);
-                p(isinf(p)) = [];
-                ps(:,j) = p;
-            end
-        end
-
         function N = eval_num(obj,args)
             %EVAL_NUM Evaluate the numerator of the baryenctric form.
             if size(args,2) ~= obj.num_vars
@@ -179,6 +118,94 @@ classdef BarycentricForm
                     kr_C = khatri_rao_prod(C,kr_C);
                 end
                 H = (kr_C.' * N(:)) ./ (kr_C.' * D(:));
+            end
+        end
+
+        function ps = poles(obj,other_args,var_idx)
+            %POLES Compute the poles with respect to one variable by specifying values for all other arguments.
+
+            % if no variable index provided, assume we want poles with respect to the first variable
+            if nargin < 3
+                var_idx = 1;
+            end
+
+            % cover special case of single-variable function
+            if nargin < 2 || obj.num_vars == 1
+                if obj.num_vars > 1
+                    error('Need to provide arguments for all but one variable for pole computation.')
+                end
+
+                [A,E] = bf_compan(obj.denom_coefs, obj.nodes{1});
+                ps = eig(A,E);
+                ps(isinf(ps)) = [];
+                return
+            end
+
+            % assemble the barycentric coefficient evaluated at the fixed variables
+            ap = obj.denom_coefs;
+            args_offset = 0;
+            for j = 1:obj.num_vars
+                if j == var_idx
+                    args_offset = 1;
+                    continue;
+                end
+
+                C = cauchy_mat(obj.nodes{j}.',other_args{j-args_offset}.').';
+                ap = tensorprod(C,ap,2,j);
+            end
+            if obj.num_vars > 1
+                ap = permute(ap, obj.num_vars:-1:1);
+            end
+            sigma = obj.nodes{var_idx};
+
+            n = obj.orders(var_idx) + 1;
+
+            E = zeros(n);
+            E(1:end-1,1) = ones(n-1,1);
+            E(1:end-1,2:end) = -eye(n-1);
+
+            A = zeros(n);
+            A(1:end-1,1) = sigma(1);
+            A(1:end-1,2:end) = -diag(sigma(2:end));
+
+            size_ap = size(ap);
+            size_ps = size_ap;
+            size_ps(1) = size_ps(1) - 1;
+            ps = zeros(size_ps);
+
+            % compute eigenvalues for each input
+            for j = 1:prod(size_ap(2:end))
+                A(end,:) = ap(:,j);
+                p = eig(A,E);
+                p(isinf(p)) = [];
+                ps(:,j) = p;
+            end
+        end
+
+        function [num_contracted,denom_contracted] = contract_coefs(obj,other_args,var_idx)
+            %CONTRACT_COEFS Coefficients of single-variable barycentric form evaluated for some fixed arguments.
+
+            % if no variable index provided, contract with respect to first variable
+            if nargin < 3
+                var_idx = 1;
+            end
+
+            denom_contracted = obj.denom_coefs;
+            num_contracted = obj.num_coefs;
+            args_offset = 0;
+            for j = 1:obj.num_vars
+                if j == var_idx
+                    args_offset = 1;
+                    continue;
+                end
+
+                C = cauchy_mat(obj.nodes{j}.',other_args{j-args_offset}.').';
+                denom_contracted = tensorprod(C,denom_contracted,2,j);
+                num_contracted = tensorprod(C,num_contracted,2,j);
+            end
+            if obj.num_vars > 1
+                denom_contracted = permute(denom_contracted, obj.num_vars:-1:1);
+                num_contracted = permute(num_contracted, obj.num_vars:-1:1);
             end
         end
     end
