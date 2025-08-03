@@ -10,6 +10,7 @@ function [bf,info] = paaa(samples,sampling_values,tol,options)
 %       TOL              - Convergence tolerance for the relative maximum error (default: 1e-3).
 %       OPTIONS          - Struct containing options:
 %                            * options.nodes_part                   - Cell array of initial nodes (default: empty).
+%                            * options.itpl_cc                      - Whether or not to interpolate complex conjugate values (default: false). 
 %                            * options.real_loewner                 - Whether or not to make Loewner matrix real-valued, requires that sampling_values
 %                                                                     are complex conjugates in the first and real in other variables (default: false).
 %                            * options.max_nodes                    - Maximum number of nodes in each variable (default: size(samples) - 1).
@@ -67,11 +68,20 @@ if ~isfield(options,'more_info')
     options.more_info = false;
 end
 
+if ~isfield(options,'itpl_cc')
+    options.itpl_cc = false;
+end
+
 % in order to compute a real loewner matrix we need orthogonal transformation matrices  
 % and must ensure that data appears in complex conjugate pairs
 real_transforms = struct;
 if options.real_loewner
+    options.itpl_cc = true;
     [real_transforms.UL,sampling_values,samples] = init_JD(sampling_values,samples);
+end
+
+if options.itpl_cc
+    [sampling_values,samples] = pair_cc_data(sampling_values,samples);
 end
 
 info.bf_iterates = {};
@@ -115,7 +125,7 @@ while (max_err > max_samples * tol && j < options.max_iter) || any(num_nodes<opt
         if add_itpl(i)
             nodes_part{i} = unique([nodes_part{i},max_Idx{i}]);
             % also interpolate the complex conjugate if 'real_loewner=true'
-            if i == 1 && options.real_loewner && imag(sampling_values{i}(max_Idx{i})) ~= 0
+            if i == 1 && options.itpl_cc && imag(sampling_values{i}(max_Idx{i})) ~= 0
                 % find the complex conjugate
                 [~,min_idx] = min(abs(conj(sampling_values{1}(max_Idx{i})) - sampling_values{1}));
                 nodes_part{i} = unique([nodes_part{i},min_idx]);
