@@ -153,10 +153,14 @@ while (max_err > max_samples * tol && j < options.max_iter) || any(num_nodes<opt
 
     if options.real_loewner
         % transform the real coefficients back to correct complex ones
-        denom_coefs = reshape(denom_coefs,flip(num_nodes));
-        denom_coefs = tensorprod(real_transforms.UR,denom_coefs,2,num_vars);
-        denom_coefs = permute(denom_coefs, [2:num_vars,1]);
-        denom_coefs = denom_coefs(:);
+        if num_vars > 1
+            denom_coefs = reshape(denom_coefs,flip(num_nodes));
+            denom_coefs = tensorprod(real_transforms.UR,denom_coefs,2,num_vars);
+            denom_coefs = permute(denom_coefs, [2:num_vars,1]);
+            denom_coefs = denom_coefs(:);
+        else
+            denom_coefs = real_transforms.UR * denom_coefs(:);
+        end
     end
 
     itpl_samples = samples(nodes_part{:});
